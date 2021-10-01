@@ -1,0 +1,7 @@
+tensorflow-gpu==2.3.4
+torch==1.7.1
+transformers
+tqdm
+h5py
+click
+gensim
