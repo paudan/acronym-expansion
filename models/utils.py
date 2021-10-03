@@ -1,8 +1,27 @@
 import csv
+import itertools
+from functools import partial
 from collections import OrderedDict, Iterable
 from datetime import datetime
 import numpy as np
 from tensorflow.keras.callbacks import CSVLogger
+
+
+def expand_entry(entry, dictionary):
+    tokens = entry['tokens']
+    acronym = tokens[entry['acronym']]
+    expansions = dictionary.get(acronym)
+    if len(expansions) == 0:
+        return None, None
+    if entry.get('expansion') is not None:
+        labels = list(map(lambda exp: 1 if exp == entry['expansion'] else 0, expansions))
+    else:
+        labels = [None] * len(expansions)
+    return zip([tokens] * len(expansions), expansions, labels)
+
+def expand_dataset(data, dictionary):
+    expand_ = partial(expand_entry, dictionary=dictionary)
+    return list(itertools.chain(*map(expand_, data)))
 
 
 def handle_value(k):
