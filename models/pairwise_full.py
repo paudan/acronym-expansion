@@ -1,4 +1,3 @@
-import sys
 import os
 import json
 import click
@@ -55,6 +54,23 @@ class InputGenerator(Sequence):
         return int(np.ceil(len(self.data)/self.batch_size))
 
 
+def create_dataset(data, tokenizer, batch_size=32):
+
+    def input_gen():
+        for entry in data:
+            feats = InputGenerator.encode([entry], tokenizer)
+            feats = tuple([tf.reshape(feats[i], shape=(feats[i].shape[1], )) for i in range(len(feats))])
+            yield feats, tf.constant([entry[2]], dtype=tf.int8)
+
+    return tf.data.Dataset.from_generator(input_gen,
+        output_types=((tf.int32, tf.int32, tf.int8, tf.int8), tf.int8),
+        output_shapes=((tf.TensorShape([MAX_LENGTH]),
+                        tf.TensorShape([MAX_LENGTH]),
+                        tf.TensorShape([MAX_EXPAND_LENGTH]),
+                        tf.TensorShape([MAX_EXPAND_LENGTH])),
+                       tf.TensorShape([1]))).cache().batch(batch_size)
+
+
 class PairwiseClassifier:
 
     def __init__(self, model_name, dropout=0.2, max_length=MAX_LENGTH, max_expansion_length=MAX_EXPAND_LENGTH):
@@ -66,10 +82,10 @@ class PairwiseClassifier:
 
     def create_model(self):
         config = AutoConfig.from_pretrained(self.model_name)
-        sentence_ids = Input(shape=(self.max_length,), dtype=tf.int32)
-        sentence_masks = Input(shape=(self.max_length,), dtype=tf.int8)
-        expand_ids = Input(shape=(self.max_expand_length,), dtype=tf.int32)
-        expand_masks = Input(shape=(self.max_expand_length,), dtype=tf.int8)
+        sentence_ids = Input(shape=(self.max_length,), dtype=tf.int32, name='input_sentence_ids')
+        sentence_masks = Input(shape=(self.max_length,), dtype=tf.int8, name='input_sentence_masks')
+        expand_ids = Input(shape=(self.max_expand_length,), dtype=tf.int32, name='input_expansion_ids')
+        expand_masks = Input(shape=(self.max_expand_length,), dtype=tf.int8, name='input_expansion_masks')
         transformer_model = TFAutoModel.from_pretrained(self.model_name, config=config, cache_dir=CACHE_DIR)
         input_sent = transformer_model(sentence_ids, sentence_masks)
         input_expand = transformer_model(expand_ids, expand_masks)
@@ -162,15 +178,17 @@ def train_model(training_data, validation_data, dictionary_file, transformer_mod
     with open(training_data, 'r', encoding='utf-8') as f:
         data = json.load(f)
     data = data[:1000]
-    training_dataset = expand_dataset(data, dictionary)
+    train_data = expand_dataset(data, dictionary)
     with open(validation_data, 'r', encoding='utf-8') as f:
         data = json.load(f)
     data = data[:1000]
-    validation_dataset = expand_dataset(data, dictionary)
+    valid_data = expand_dataset(data, dictionary)
     tokenizer = AutoTokenizer.from_pretrained(transformer_model, do_lower_case=True, add_special_tokens=False,
                                               cache_dir=CACHE_DIR, max_length=MAX_LENGTH, add_prefix_space=True)
-    gen_train = InputGenerator(training_dataset, tokenizer, batch_size=batch_size)
-    gen_valid = InputGenerator(validation_dataset, tokenizer, batch_size=batch_size)
+    # gen_train = create_dataset(train_data, tokenizer, batch_size=batch_size)
+    # gen_valid = create_dataset(valid_data, tokenizer, batch_size=batch_size)
+    gen_train = InputGenerator(train_data, tokenizer, batch_size=batch_size)
+    gen_valid = InputGenerator(valid_data, tokenizer, batch_size=batch_size)
     classifier = PairwiseClassifier(transformer_model, dropout=dropout)
     classifier.train(gen_train, epochs,
         learning_rate=learning_rate,
@@ -214,4 +232,3 @@ def predict_sentences(test_data, model_dir, transformer_model, dictionary_file, 
 
 if __name__ == "__main__":
     main()
-
