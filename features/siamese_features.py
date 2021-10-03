@@ -1,17 +1,39 @@
 import os
 import json
+import itertools
 import uuid
 import h5py
 import click
+import nltk
 import numpy as np
 from tqdm import tqdm
 import tensorflow as tf
 from gensim.models.keyedvectors import KeyedVectors
 from transformers import TFAutoModel, AutoConfig, AutoTokenizer
 
+NLTK_PATH = '/mnt/DATA/data/nltk'
+nltk.data.path.append(NLTK_PATH)
 MODEL_DIR = 'embeddings'
 model_name = 'roberta-base'
 MAX_LENGTH = 512
+
+
+def expand_acronym(entry, expansion=None):
+    if expansion is None:
+        expansion = entry['expansion']
+    tokenized = nltk.wordpunct_tokenize(expansion)
+    expanded = entry['tokens'].copy()
+    expanded[entry['acronym']] = tokenized
+    expanded = [[x] if not isinstance(x, list) else x for x in expanded]
+    return list(itertools.chain.from_iterable(expanded))
+
+def expand_candidates(entry, dictionary):
+    tokens = entry['tokens']
+    acronym = tokens[entry['acronym']]
+    expansions = dictionary.get(acronym)
+    if len(expansions) == 0:
+        return []
+    return list(map(lambda e: expand_acronym(entry, e), expansions))
 
 
 class SiameseFeatures:
@@ -23,15 +45,15 @@ class SiameseFeatures:
         self.lowercase = lowercase
         self.embed_full = embed_full
 
-    def embed_text(self, tokens, batched=False):
+    def embed_text(self, tokens, batched=False, tokenized=True):
         if len(tokens) == 0:
             return tf.zeros(shape=(1, self.model.config.hidden_size))
         if batched is True:
-            inputs = self.tokenizer.batch_encode_plus(tokens, return_tensors='tf', padding=True,
-                                                      max_length=MAX_LENGTH, truncation=True)
+            inputs = self.tokenizer.batch_encode_plus(tokens, return_tensors='tf',
+                    padding=True, is_split_into_words=tokenized, max_length=MAX_LENGTH, truncation=True)
         else:
             inputs = self.tokenizer.encode_plus(tokens, return_tensors='tf', padding=True, truncation=True,
-                                                is_split_into_words=True, max_length=MAX_LENGTH)
+                                                is_split_into_words=tokenized, max_length=MAX_LENGTH)
         embed = self.model(**inputs)
         return embed.pooler_output
 
@@ -47,14 +69,14 @@ class SiameseFeatures:
             tokens = list(map(lambda _: _.lower(), tokens))
         if self.embed_full is True:
             embed = self.embed_text(tokens)
-            embed_expansions = self.embed_text(expansions, batched=True)
+            embed_expansions = self.embed_text(expansions, batched=True, tokenized=False)
             inst_left = tf.repeat(embed, repeats=embed_expansions.shape[0], axis=0)
-            inst_right = tf.concat([tf.repeat(embed, repeats=embed_expansions.shape[0], axis=0), embed_expansions], axis=1)
+            inst_right = self.embed_text(expand_candidates(entry, self.dictionary), batched=True, tokenized=True)
         else:
             embed_left = self.embed_text(tokens[:entry['acronym']])
             embed_right = self.embed_text(tokens[(entry['acronym']+1):])
             embed_acro = self.embed_text([tokens[entry['acronym']]])
-            embed_expansions = self.embed_text(expansions, batched=True)
+            embed_expansions = self.embed_text(expansions, batched=True, tokenized=False)
             inst_left = tf.repeat(tf.concat([embed_left, embed_acro, embed_right], axis=1), repeats=embed_expansions.shape[0], axis=0)
             inst_right = tf.concat([tf.repeat(embed_left, repeats=embed_expansions.shape[0], axis=0), embed_expansions,
                                     tf.repeat(embed_right, repeats=embed_expansions.shape[0], axis=0)], axis=1)
@@ -69,7 +91,7 @@ class SiameseFeatures:
     def model_dim(self):
         transform_dim = self.model.config.hidden_size
         if self.embed_full:
-            return transform_dim * 2
+            return transform_dim
         else:
             return transform_dim * 3
 
