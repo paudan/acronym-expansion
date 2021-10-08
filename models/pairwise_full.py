@@ -73,10 +73,12 @@ def create_dataset(data, tokenizer, batch_size=32):
 
 class PairwiseClassifier:
 
-    def __init__(self, model_name, dropout=0.2, max_length=MAX_LENGTH, max_expansion_length=MAX_EXPAND_LENGTH):
+    def __init__(self, model_name, dropout=0.2, freeze_weights=True,
+                 max_length=MAX_LENGTH, max_expansion_length=MAX_EXPAND_LENGTH):
         self.dropout = dropout
         self.model_name = model_name
         self.model = None
+        self.freeze_weights = freeze_weights
         self.max_length = max_length
         self.max_expand_length = max_expansion_length
 
@@ -87,6 +89,13 @@ class PairwiseClassifier:
         expand_ids = Input(shape=(self.max_expand_length,), dtype=tf.int32, name='input_expansion_ids')
         expand_masks = Input(shape=(self.max_expand_length,), dtype=tf.int8, name='input_expansion_masks')
         transformer_model = TFAutoModel.from_pretrained(self.model_name, config=config, cache_dir=CACHE_DIR)
+        # Code is specific for particular model, must be edited
+        # if self.freeze_weights:
+        #     from transformers.models.bert.modeling_tf_bert import TFBertMainLayer
+        #     for layer in transformer_model.layers[:]:
+        #         if isinstance(layer, TFBertMainLayer):
+        #            for idx, layer in enumerate(layer.encoder.layer):
+        #                layer.trainable = False
         input_sent = transformer_model(sentence_ids, sentence_masks)
         input_expand = transformer_model(expand_ids, expand_masks)
         input_sent = input_sent[1]
