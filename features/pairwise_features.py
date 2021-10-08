@@ -14,7 +14,7 @@ model_name = 'roberta-base'
 MAX_LENGTH = 512
 
 
-class PairwiseFeatures:
+class PairwiseTransformerFeatures:
 
     def __init__(self, tokenizer, model, dictionary, lowercase=True, embed_full=True):
         self.tokenizer = tokenizer
@@ -90,12 +90,12 @@ class PairwiseFeatures:
         f.close()
 
 
-class PairwiseWord2VecFeatures(PairwiseFeatures):
+class PairwiseWord2VecFeatures(PairwiseTransformerFeatures):
 
-    def __init__(self, dictionary, model_file, lowercase=True, embed_full=True):
+    def __init__(self, dictionary, model_file, lowercase=True, embed_full=True, binary=False):
         super().__init__(None, None, dictionary, lowercase=lowercase, embed_full=embed_full)
         self.model_file = model_file
-        self.wv_model = KeyedVectors.load_word2vec_format(model_file, binary=False)
+        self.wv_model = KeyedVectors.load_word2vec_format(model_file, binary=binary)
 
     @staticmethod
     def convert_glove(input_file, output_file):
@@ -146,7 +146,7 @@ def transformer_features(ctx, model_name):
     config = AutoConfig.from_pretrained(model_name)
     model = TFAutoModel.from_pretrained(model_name, config=config, cache_dir=CACHE_DIR)
     print(f'Embedding size: {model.config.hidden_size}')
-    dst = PairwiseFeatures(tokenizer, model, dictionary, embed_full=ctx.obj["embed_full"])
+    dst = PairwiseTransformerFeatures(tokenizer, model, dictionary, embed_full=ctx.obj["embed_full"])
     dst.create_dataset(data, ctx.obj["output_file"])
 
 @main.command()

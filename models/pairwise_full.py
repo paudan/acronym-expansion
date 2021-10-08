@@ -127,7 +127,7 @@ class PairwiseClassifier:
         weights_path = os.path.join(log_dir, 'weights.h5')
         history = self.model.fit(train_data, epochs=n_epochs,
             validation_data=valid_data,
-            callbacks=[TensorBoard(log_dir=log_dir, write_graph=False),
+            callbacks=[TensorBoard(log_dir=log_dir, write_graph=False, profile_batch=0),
                        KerasCSVLogger(os.path.join(log_dir, 'training.csv'), append=True),
                        ModelCheckpoint(weights_path, save_best_only=True, save_weights_only=True),
                        ReduceLROnPlateau(),

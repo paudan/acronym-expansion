@@ -7,7 +7,7 @@ import numpy as np
 from numpy.random import seed
 import tensorflow as tf
 from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.models import Model, save_model
+from tensorflow.keras.models import Model, load_model, save_model
 from tensorflow.keras.callbacks import TensorBoard, ModelCheckpoint, ReduceLROnPlateau, EarlyStopping
 from tensorflow.keras.layers import Input, Dense, Dropout, GRU, Bidirectional, Reshape
 from tensorflow.keras.utils import Sequence
@@ -111,9 +111,7 @@ class PairwiseClassifier:
         return None, None
 
     def load_model(self, model_dir):
-        self.model = self.create_model()
-        weights_path = os.path.join(MODELS_DIR, model_dir, 'weights.h5')
-        self.model.load_weights(weights_path, by_name=True)
+        self.model = load_model(os.path.join(MODELS_DIR, model_dir))
 
     def save_model(self, save_dir):
         save_model(self.model, save_dir)
@@ -183,7 +181,7 @@ def train_model(training_data, validation_data, classifier_model, dropout, learn
 @click.option("--embed-full", help="Embed full sentence", is_flag=True)
 def predict_sentences(test_data, model_dir, transformer_model, classifier_model, dictionary_file, embed_full):
     sys.path.extend(['features'])
-    from pairwise_features import PairwiseFeatures
+    from pairwise_features import PairwiseTransformerFeatures as PairwiseFeatures
     with open(test_data, 'r', encoding='utf-8') as f:
         data = json.load(f)
     data = data[:10]
